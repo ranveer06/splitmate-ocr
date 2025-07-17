@@ -23,22 +23,27 @@ app.post("/ocr", async (req, res) => {
 
     console.log(`[REQUEST] /ocr - imageUrl: ${imageUrl}`);
 
-    // Download the image first
+    // 1. Fetch the image from the URL
     const imageResponse = await fetch(imageUrl);
-    if (!imageResponse.ok) throw new Error("Failed to fetch image from URL");
+    if (!imageResponse.ok) {
+      throw new Error(`Failed to fetch image from URL: ${imageResponse.statusText}`);
+    }
+
     const imageBuffer = await imageResponse.buffer();
 
-    // Prepare multipart/form-data
+    // 2. Prepare the OCR API request
     const formData = new FormData();
     formData.append("file", imageBuffer, { filename: "receipt.jpg" });
     formData.append("OCREngine", "2");
+    formData.append("language", "eng");
+    formData.append("isOverlayRequired", "false");
+    formData.append("scale", "true");
+    formData.append("isTable", "true");
+    formData.append("apikey", OCR_API_KEY);
 
     const ocrResponse = await fetch("https://api.ocr.space/parse/image", {
       method: "POST",
-      headers: {
-        apikey: OCR_API_KEY,
-        ...formData.getHeaders(),
-      },
+      headers: formData.getHeaders(),
       body: formData,
     });
 
@@ -58,7 +63,6 @@ app.post("/ocr", async (req, res) => {
   }
 });
 
-// /parse route stays the same...
 app.post("/parse", async (req, res) => {
   const { text } = req.body;
 
@@ -78,7 +82,13 @@ app.post("/parse", async (req, res) => {
         messages: [
           {
             role: "system",
-            content: "You are a receipt parser. Extract item names and their prices from the receipt text. Also extract subtotal, tax, and total. Return as JSON.",
+            content: `You are a receipt parser. Extract item names and their prices from the receipt text. Also extract subtotal, tax, and total. Return the result as a JSON object like:
+{
+  "items": [{ "name": "...", "price": ... }],
+  "subtotal": ...,
+  "tax": ...,
+  "total": ...
+}`,
           },
           {
             role: "user",
@@ -92,7 +102,7 @@ app.post("/parse", async (req, res) => {
     const data = await openaiResponse.json();
     const reply = data.choices?.[0]?.message?.content;
 
-    if (!reply) throw new Error("Failed to get response from OpenAI.");
+    if (!reply) throw new Error("No response from OpenAI.");
 
     let parsed;
     try {
@@ -104,7 +114,7 @@ app.post("/parse", async (req, res) => {
     res.json(parsed);
   } catch (err) {
     console.error("LLM Parse Failure:", err);
-    res.status(500).json({ error: "Failed to parse receipt with LLM" });
+    res.status(500).json({ error: "Failed to parse receipt with LLM." });
   }
 });
 
