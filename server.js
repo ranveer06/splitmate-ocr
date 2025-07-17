@@ -16,6 +16,8 @@ app.post("/ocr", async (req, res) => {
   try {
     const { imageUrl, filetype } = req.body;
 
+    console.log("[REQUEST] /ocr - imageUrl:", imageUrl);
+
     if (!imageUrl) {
       return res.status(400).json({ error: "imageUrl is required" });
     }
@@ -34,15 +36,17 @@ app.post("/ocr", async (req, res) => {
 
     const data = await response.json();
 
+    console.log("[OCR API RESPONSE]", JSON.stringify(data, null, 2)); // log full OCR API response
+
     if (data.IsErroredOnProcessing) {
-      console.error("OCR error:", data.ErrorMessage);
-      return res.status(500).json({ error: data.ErrorMessage });
+      console.error("[OCR ERROR]", data.ErrorMessage || data.ErrorDetails || data);
+      return res.status(500).json({ error: data.ErrorMessage || "OCR processing error" });
     }
 
     const text = data.ParsedResults?.[0]?.ParsedText || "";
     res.status(200).json({ text });
   } catch (err) {
-    console.error("OCR Failure:", err);
+    console.error("[SERVER ERROR] OCR Failure:", err);
     res.status(500).json({ error: "Unexpected OCR failure." });
   }
 });
@@ -55,6 +59,8 @@ app.post("/parse", async (req, res) => {
   }
 
   try {
+    console.log("[REQUEST] /parse - text length:", text.length);
+
     const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -66,7 +72,8 @@ app.post("/parse", async (req, res) => {
         messages: [
           {
             role: "system",
-            content: "You are a receipt parser. Extract item names and their prices from the receipt text. Also extract subtotal, tax, and total. Return as JSON.",
+            content:
+              "You are a receipt parser. Extract item names and their prices from the receipt text. Also extract subtotal, tax, and total. Return as JSON.",
           },
           {
             role: "user",
@@ -78,6 +85,8 @@ app.post("/parse", async (req, res) => {
     });
 
     const data = await openaiResponse.json();
+    console.log("[OpenAI RESPONSE]", JSON.stringify(data, null, 2)); // log full OpenAI API response
+
     const reply = data.choices?.[0]?.message?.content;
 
     if (!reply) throw new Error("Failed to get response from OpenAI.");
@@ -91,7 +100,7 @@ app.post("/parse", async (req, res) => {
 
     res.json(parsed);
   } catch (err) {
-    console.error("LLM Parse Failure:", err);
+    console.error("[SERVER ERROR] LLM Parse Failure:", err);
     res.status(500).json({ error: "Failed to parse receipt with LLM" });
   }
 });
